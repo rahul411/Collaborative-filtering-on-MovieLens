@@ -7,8 +7,8 @@ from sklearn.metrics import mean_squared_error
 from utils import load_dataset
 
 max_ratings = 5
-train_path = 'ml-100k/ua.base'
-test_path = 'ml-100k/ua.test'
+train_path = 'ml-100k/u1.base'
+test_path = 'ml-100k/u1.test'
 separator = '\t'
 
 #This function is for creating user_item_matrix for  movieLens-100k
@@ -62,14 +62,15 @@ class RBM():
 
     def __init__(self, input_data):
         self.model_path = 'model/'
-        self.hidden_dim = 1024
+        self.hidden_dim = 2000
         self.no_users = input_data.shape[0]
         self.visible_dim = input_data.shape[1]
         self.stddev = 1.0
-        self.learning_rate = 0.1
+        self.learning_rate = 0.0005
         self.batchsize = 10
         self.alpha = 1
-        self.epochs = 10
+        self.epochs = 50
+        self.momentum = 0.1
         self.input_data = input_data
         self.K = 10
 
@@ -125,15 +126,17 @@ class RBM():
         self.mask = tf.reshape(self.mask,[self.batchsize,-1])
 
         positive, negative, h_prob0, h_prob, v_prob, v_sample = self.gibbs_step(self.X)
-
         w_gradient = self.learning_rate*(positive-negative)
         h_bias_gradient = tf.reduce_mean(self.learning_rate*(h_prob0-h_prob), axis=0)
         v_bias_gradient = tf.reduce_mean(self.learning_rate*(self.X*self.mask - v_prob*self.mask), axis=0)
 
-        #TODO: Add a momentum term. This would require stroing the prev gradients.
-        w_update = self.W.assign_add(w_gradient)
-        h_bias_update = tf.assign_add(self.h_bias, h_bias_gradient)
-        v_bias_update = tf.assign_add(self.v_bias, v_bias_gradient)
+        w_momentum_update = self.W*self.momentum + w_gradient 
+        h_momentum_update = self.h_bias*self.momentum + h_bias_gradient
+        v_momentum_update = self.v_bias*self.momentum + v_bias_gradient
+
+        w_update = self.W.assign_add(w_momentum_update)
+        h_bias_update = tf.assign_add(self.h_bias, h_momentum_update)
+        v_bias_update = tf.assign_add(self.v_bias, v_momentum_update)
 
         self.loss = tf.reduce_mean(tf.losses.mean_squared_error(self.X*self.mask,v_sample*self.mask))
         tf.summary.scalar('loss',self.loss)
@@ -164,10 +167,10 @@ class RBM():
                 writer.add_summary(_summary)
             print('End of epoch:', epoch)        
             
-            if epoch%10 == 0:
+            if epoch%7 == 0:
                 self.saver.save(sess, os.path.join(self.model_path, 'model'), global_step=epoch)
                 writer.flush()
-                self.learning_rate = self.learning_rate/2 
+                # self.learning_rate = self.learning_rate/2 
             train_predictions = np.concatenate(results,axis=0)
             rmse = math.sqrt((unrated/rated+1)*mean_squared_error(np.argmax(np.reshape(self.input_data[:train_predictions.shape[0]],(train_predictions.shape[0],-1,max_ratings)),axis=2),np.argmax(np.reshape(train_predictions,(train_predictions.shape[0],-1,max_ratings)),axis=2)))
             print('Final rmse:',rmse)
@@ -211,4 +214,4 @@ sess = tf.InteractiveSession()
 
 testing_data, rated, unrated = create_input_data(testing_data)
 rbm = RBM(testing_data)
-rbm.test(sess, rated, unrated, 'model/model-10')
+rbm.test(sess, rated, unrated, 'model/model-7')
