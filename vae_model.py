@@ -6,8 +6,8 @@ import numpy as np
 
 class VAECF(object):
     """docstring for VAECF"""
-    def __init__(self, sess, num_user, num_item, hidden_encoder_dim, hidden_decoder_dim, latent_dim, output_dim, learning_rate,
-                batch_size, k, reg_param=0, one_hot=False, user_embed_dim = 500, item_embed_dim = 500):
+    def __init__(self, sess, num_user, num_item, hidden_encoder_dim, hidden_decoder_dim, latent_dim, learning_rate,
+                batch_size, k, beta, reg_param, one_hot=False, user_embed_dim = 500, item_embed_dim = 500):
         
         self.sess = sess
         self.num_item = num_item
@@ -16,13 +16,13 @@ class VAECF(object):
         self.hidden_decoder_dim = hidden_decoder_dim
         self.batch_size = batch_size
         self.latent_dim = latent_dim
-        self.output_dim = output_dim
         self.learning_rate = learning_rate    
         self.reg_param = reg_param
         self.one_hot = one_hot
         self.user_embed_dim = user_embed_dim
         self.item_embed_dim = item_embed_dim
         self.k = k
+        self.beta = beta
 
         if self.one_hot:
             self.user_input_dim = self.num_user   #6040
@@ -205,7 +205,14 @@ class VAECF(object):
         self.reconstructed_user = tf.cast(self.reconstructed_user, tf.int64)
         # self.MAE = tf.reduce_mean(
         #     tf.abs(tf.subtract(self.user, self.reconstructed_user)))
-        self.Recall = tf.metrics.recall(tf.cast(self.user, tf.int64), self.reconstructed_user)
+        # self.Recall = tf.metrics.recall(tf.cast(self.user, tf.int64), self.reconstructed_user, weight)
+
+        self.vals, self.indxs = tf.nn.top_k(self.reconstructed_user, k = 20, sorted=True)
+        # self.user_vals = tf.gather(self.user, self.indxs)
+
+        # self.Recall = tf.metrics.recall(tf.cast(self.user_vals, tf.int64), self.vals[0])
+        self.Recall = tf.metrics.recall_at_top_k(tf.cast(self.user, tf.int64), self.indxs, k = 20)
+
 
 
         # Compute KL Divergence between prior p(z) and q(z|x)
@@ -233,7 +240,7 @@ class VAECF(object):
         # self.RMSE = tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(self.rating, self.rating_pred))))
         # self.Recall = tf.metrics.recall_at_k(self.rating, self.rating_pred, self.k)
 
-        self.loss = tf.reduce_mean(self.RMSE + self.KLD)
+        self.loss = tf.reduce_mean(self.RMSE + self.beta * self.KLD)
         self.regularized_loss = self.loss + self.reg_param * self.l2_loss
 
         # tf.summary.scalar("RMSE", self.RMSE)
@@ -294,7 +301,7 @@ class VAECF(object):
         # self.sess.run(tf.global_variables_initializer())
 
         for step in range(1, n_steps):
-
+                print(step)
                 # self.sess.run(tf.global_variables_initializer())
                 batch_idx = np.random.randint(train_size, size=self.batch_size)
                 user_idx = nonzero_user_idx[train_idx[batch_idx]]
@@ -303,13 +310,12 @@ class VAECF(object):
 
                 _, rmse, recall = self.sess.run(
                     [self.train_step, self.RMSE, self.Recall], feed_dict=feed_dict)
-                print (rmse)
-                print (recall)
 
                 # train_writer.add_summary(summary_str, step)
 
-                if step % 10 == 0:
+                if step % 100 == 0:
 
+                    print ("training done. Validating...")
                     valid_user_idx = nonzero_user_idx[valid_idx]
                     valid_item_idx = nonzero_item_idx[valid_idx]
                     # valid_data = np.zeros(data.shape)
@@ -331,20 +337,20 @@ class VAECF(object):
                     # test_writer.add_summary(summary_str, step)
 
                     print ("Step {0} | Train RMSE: {1:3.4f}, Train Recall: {2:3.4f}".format(
-                        step, rmse, recall))
+                        step, rmse, recall[0]))
                     print ("         | Valid  RMSE: {0:3.4f}, Valid Recall: {1:3.4f}".format(
-                        rmse_valid, recall_valid))
+                        rmse_valid, recall_valid[0]))
                     print ("         | Test  RMSE: {0:3.4f}, Test Recall: {1:3.4f}".format(
-                        rmse_test, recall_test))
+                        rmse_test, recall_test[0]))
 
 
                     if best_val_rmse > rmse_valid:
                         best_val_rmse = rmse_valid
                         best_test_rmse = rmse_test
 
-                    if best_val_recall > recall_valid:
-                        best_val_recall = recall_valid
-                        best_test_recall = recall_test
+                    if best_val_recall > recall_valid[0]:
+                        best_val_recall = recall_valid[0]
+                        best_test_recall = recall_test[0]
 
 
         self.saver.save(self.sess, result_path + "/model.ckpt")

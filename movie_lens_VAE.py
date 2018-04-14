@@ -15,10 +15,11 @@ num_item = 3952
 hidden_encoder_dim = 300
 hidden_decoder_dim = 300
 latent_dim = 50
-output_dim = 50
+# output_dim = 50
 learning_rate = 0.002
 batch_size = 64
-reg_param = 0
+reg_param = 0.02
+beta = 0.2
 k = 20
 
 n_steps = 1000
@@ -50,14 +51,14 @@ def train():
     valid_idx = idx[int(0.8 * num_rating):int(0.9 * num_rating)]
     test_idx = idx[int(0.9 * num_rating):]
 
-    result_path = "{0}_{1}_{2}_{3}_{4}_{5}_{6}_{7}".format(
-        hidden_encoder_dim, hidden_decoder_dim, latent_dim, output_dim, learning_rate, batch_size, reg_param, one_hot)
+    result_path = "{0}_{1}_{2}_{3}_{4}_{5}_{6}".format(
+        hidden_encoder_dim, hidden_decoder_dim, latent_dim, learning_rate, batch_size, reg_param, one_hot)
     if not os.path.exists(result_path + "/model.ckpt.index"):
     	with tf.Session() as sess:
     		model = VAECF(sess, num_user, num_item,
                           hidden_encoder_dim=hidden_encoder_dim, hidden_decoder_dim=hidden_decoder_dim,
-                          latent_dim=latent_dim, output_dim=output_dim, learning_rate=learning_rate, 
-                          batch_size=batch_size, reg_param=reg_param, one_hot=one_hot, k=k)
+                          latent_dim=latent_dim, learning_rate=learning_rate, 
+                          batch_size=batch_size, reg_param=reg_param, one_hot=one_hot, k=k, beta = beta)
 
     		print("Train size={0}, Validation size={1}, Test size={2}".format(
                 train_idx.size, valid_idx.size, test_idx.size))
